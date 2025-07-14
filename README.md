@@ -22,6 +22,7 @@ The R12F receiver provides 12 channels, which are mapped as follows:
 | CH4     | Left/right steering     | Controls the robot's rotation/steering           |
 | CH6     | Speed control           | Controls the speed multiplier (1-100)            |
 | CH9     | Autonomous mode toggle  | Toggles between autonomous and manual control    |
+| CH10    | Main light control      | Toggles the main light ON/OFF                    |
 | Others  | Not mapped              | Available for additional functionality           |
 
 ## Pin Connections
@@ -38,7 +39,7 @@ CH6 -> Digital Pin 7
 CH7 -> Digital Pin 8
 CH8 -> Digital Pin 9
 CH9 -> Digital Pin 10
-CH10 -> Digital Pin 11
+CH10 -> Digital Pin 11 (Main light control)
 CH11 -> Digital Pin 12
 CH12 -> Digital Pin 13
 ```
@@ -67,7 +68,8 @@ The Arduino sketch outputs JSON-formatted data over the serial connection at 115
   },
   "params": {
     "speed_scale": 38,
-    "autonomous_mode": true
+    "autonomous_mode": true,
+    "main_light": false
   },
   "raw": [1473, 1476, 1759, 1476, 1469, 1881, 1469, 1473, 1881, 1476, 1470, 1476]
 }
@@ -86,6 +88,7 @@ The Arduino sketch outputs JSON-formatted data over the serial connection at 115
 - **params**: Control parameters
   - **speed_scale**: Speed multiplier (1-100)
   - **autonomous_mode**: Boolean flag for autonomous operation
+  - **main_light**: Boolean flag for main light status (ON/OFF)
 
 - **raw**: Raw PWM values from all 12 channels (for debugging)
 
@@ -114,6 +117,7 @@ class R12FNode(Node):
         self.gimbal_tilt_pub = self.create_publisher(Float32, 'gimbal/tilt', 10)
         self.speed_scale_pub = self.create_publisher(Int32, 'speed_scale', 10)
         self.auto_mode_pub = self.create_publisher(Bool, 'autonomous_mode', 10)
+        self.main_light_pub = self.create_publisher(Bool, 'main_light', 10)
         
         # Serial connection
         self.serial = serial.Serial('/dev/ttyACM0', 115200)
@@ -154,6 +158,11 @@ class R12FNode(Node):
                 auto_msg = Bool()
                 auto_msg.data = data['params']['autonomous_mode']
                 self.auto_mode_pub.publish(auto_msg)
+                
+                # Publish main light status
+                light_msg = Bool()
+                light_msg.data = data['params']['main_light']
+                self.main_light_pub.publish(light_msg)
                 
             except json.JSONDecodeError:
                 self.get_logger().warn('Invalid JSON received')
@@ -200,6 +209,27 @@ def generate_launch_description():
 - **Invalid JSON errors**: The JSON format may be corrupted. Check the Arduino code for proper formatting.
 - **Channel values not changing**: Ensure the R12F receiver is properly bound to the transmitter.
 - **Incorrect channel mapping**: Modify the `CHANNEL_PINS` array in the Arduino sketch to match your connections.
+
+## Arduino CLI Commands
+
+Use the following commands to compile, upload, and monitor the Arduino sketch:
+
+### Compile the sketch
+```bash
+cd r12f_channel_reader && ../bin/arduino-cli compile --fqbn arduino:avr:mega
+```
+
+### Upload the sketch to the Arduino
+```bash
+../bin/arduino-cli upload -p /dev/cu.usbmodem11201 --fqbn arduino:avr:mega
+```
+
+### Monitor the serial output
+```bash
+../bin/arduino-cli monitor -p /dev/cu.usbmodem11201 -c baudrate=115200
+```
+
+Note: Replace `/dev/cu.usbmodem11201` with the actual port your Arduino is connected to. On Windows, this would be something like `COM3`.
 
 ## License
 

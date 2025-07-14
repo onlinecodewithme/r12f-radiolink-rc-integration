@@ -11,6 +11,7 @@
  * - CH4: Left/right movement (steering)
  * - CH6: Speed control (1-100)
  * - CH9: Autonomous/Manual mode toggle
+ * - CH10: Main light ON/OFF
  * 
  * HARDWARE:
  * - Arduino Mega connected via USB
@@ -101,6 +102,12 @@
  *                 auto_msg.data = data['params']['autonomous_mode']
  *                 self.auto_mode_pub.publish(auto_msg)
  *                 
+ *                 # Publish main light status
+ *                 light_msg = Bool()
+ *                 light_msg.data = data['params']['main_light']
+ *                 self.main_light_pub = self.create_publisher(Bool, 'main_light', 10)
+ *                 self.main_light_pub.publish(light_msg)
+ *                 
  *             except json.JSONDecodeError:
  *                 self.get_logger().warn('Invalid JSON received')
  *             except Exception as e:
@@ -124,6 +131,9 @@
 // Define the pins connected to each channel of the R12F receiver
 // Modify these pin assignments based on your actual connections
 const int CHANNEL_PINS[NUM_CHANNELS] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+
+// Define the pin for the main light
+const int MAIN_LIGHT_PIN = 22;  // Using pin 22 for the main light output
 
 // Variables to store the pulse width values for each channel
 unsigned long channel_values[NUM_CHANNELS];
@@ -167,8 +177,10 @@ int mapToSpeedScale(unsigned long value) {
   // Constrain to expected range
   value = constrain(value, RC_MIN, RC_MAX);
   
-  // Map to 1-100 range
-  return map(value, RC_MIN, RC_MAX, 1, 100);
+  // Map to 1-100 range with adjusted input range to ensure full output range
+  // The RC_MIN and RC_MAX might not be exactly 1000 and 2000 in practice
+  // Using 1050 and 1950 as effective range to ensure we get full 1-100 output
+  return map(value, 1050, 1950, 1, 100);
 }
 
 // Function to check if a channel is in "high" position (for toggle switches)
@@ -184,6 +196,9 @@ void setup() {
   for (int i = 0; i < NUM_CHANNELS; i++) {
     pinMode(CHANNEL_PINS[i], INPUT);
   }
+  
+  // Set the main light pin as output
+  pinMode(MAIN_LIGHT_PIN, OUTPUT);
   
   // Wait for serial port to connect
   while (!Serial) {
@@ -208,6 +223,10 @@ void loop() {
   float angular_z = normalizeRCValue(channel_values[3]); // CH4: Left/right steering
   float speed_scale = normalizeRCValue(channel_values[5]); // CH6: Speed control
   bool autonomous_mode = isChannelHigh(channel_values[8]); // CH9: Autonomous/Manual toggle
+  bool main_light_on = isChannelHigh(channel_values[9]); // CH10: Main light ON/OFF
+  
+  // Control the main light based on channel 10
+  digitalWrite(MAIN_LIGHT_PIN, main_light_on ? HIGH : LOW);
   
   // Map speed scale to 1-100 range
   int speed_scale_int = mapToSpeedScale(channel_values[5]); // CH6: Speed control
@@ -218,7 +237,7 @@ void loop() {
   // Movement controls (for Twist messages)
   Serial.print("\"twist\":{");
   Serial.print("\"linear\":{\"x\":");
-  Serial.print(linear_y, 3); // Forward/backward maps to linear.x in ROS
+  Serial.print(-linear_y, 3); // Forward/backward maps to linear.x in ROS
   Serial.print(",\"y\":0.0,\"z\":0.0},");
   Serial.print("\"angular\":{\"x\":0.0,\"y\":0.0,\"z\":");
   Serial.print(angular_z, 3);
@@ -236,6 +255,8 @@ void loop() {
   Serial.print(speed_scale_int); // Now using integer 1-100 range
   Serial.print(",\"autonomous_mode\":");
   Serial.print(autonomous_mode ? "true" : "false");
+  Serial.print(",\"main_light\":");
+  Serial.print(main_light_on ? "true" : "false");
   Serial.print("},");
   
   // Raw channel values (for debugging)
